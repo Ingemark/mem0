@@ -11,11 +11,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set in environment")
 
+SCHEMA_NAME = os.environ.get('SCHEMA_NAME')
+if not SCHEMA_NAME:
+    raise RuntimeError("SCHEMA_NAME is not set in environment")
+
 # SQLAlchemy engine & session
 engine = create_engine(
     DATABASE_URL,
     connect_args={
-        "options": "-csearch_path=openmemory,public"
+        "options": f"-csearch_path={SCHEMA_NAME},public"
     }
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

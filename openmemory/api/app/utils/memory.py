@@ -241,7 +241,7 @@ def get_memory_client(custom_instructions: str = None):
         config = get_default_memory_config()
 
         # 2. Check for and apply custom config file
-        custom_config_path = 'config.json'
+        custom_config_path = os.environ.get('CUSTOM_CONFIG_PATH', 'config.json')
         if os.path.exists(custom_config_path):
             print(f"Found custom configuration at {custom_config_path}, merging with defaults.")
             try:

@@ -9,13 +9,14 @@ import uuid
 
 import sqlalchemy as sa
 from alembic import op
+import os
 
 # revision identifiers, used by Alembic.
 revision = 'add_config_table'
 down_revision = '0b53c747049a'
 branch_labels = None
 depends_on = None
-
+schema_name = os.environ.get('SCHEMA_NAME')
 
 def upgrade():
     # Create configs table if it doesn't exist
@@ -27,14 +28,15 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('key')
+        sa.UniqueConstraint('key'),
+        schema=schema_name
     )
     
     # Create index for key lookups
-    op.create_index('idx_configs_key', 'configs', ['key'])
+    op.create_index('idx_configs_key', 'configs', ['key'], schema=schema_name)
 
 
 def downgrade():
     # Drop the configs table
-    op.drop_index('idx_configs_key', 'configs')
-    op.drop_table('configs') 
+    op.drop_index('idx_configs_key', 'configs', schema=schema_name)
+    op.drop_table('configs', schema=schema_name)
