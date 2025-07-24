@@ -1,12 +1,10 @@
 import datetime
 import enum
-import os
 import uuid
 
 import sqlalchemy as sa
-from app.database import Base
-
 from app.utils.categorization import get_categories_for_memory
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy import (
     JSON,
     UUID,
@@ -19,11 +17,17 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
-    event,
+    event, MetaData,
 )
-from sqlalchemy.orm import Session, relationship
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.orm import Session, relationship, declarative_base
 
-Base.metadata.schema = os.environ.get('SCHEMA_NAME')
+from openmemory.api.config.settings import get_settings
+
+settings = get_settings()
+metadata = MetaData(schema=settings.schema_name)
+Base = declarative_base(metadata=metadata)
+SCHEMA_NAME = settings.schema_name
 
 
 def get_current_utc_time():
@@ -38,9 +42,20 @@ class MemoryState(enum.Enum):
     deleted = "deleted"
 
 
+MemoryStateEnum = SAEnum(MemoryState, name="memory_state", schema=SCHEMA_NAME)
+
+memory_categories = Table(
+    "memory_categories",
+    Base.metadata,
+    Column("memory_id", PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.memories.id"), primary_key=True, index=True),
+    Column("category_id", PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.categories.id"), primary_key=True, index=True),
+    Index('idx_memory_category', 'memory_id', 'category_id'),
+    schema=SCHEMA_NAME,
+)
+
 class User(Base):
     __tablename__ = "users"
-    id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, unique=True, index=True)
     name = Column(String, nullable=True, index=True)
     email = Column(String, unique=True, nullable=True, index=True)
@@ -54,14 +69,12 @@ class User(Base):
     memories = relationship("Memory", back_populates="user")
 
 
-import os
-
-SCHEMA_NAME = os.environ.get('SCHEMA_NAME', 'openmemory')
-
 class App(Base):
     __tablename__ = "apps"
-    id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    owner_id = Column(UUID, ForeignKey(f"{SCHEMA_NAME}.users.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id = Column(PGUUID(as_uuid=True),
+                      ForeignKey(f"{SCHEMA_NAME}.users.id"),
+                      nullable=False, index=True)
     name = Column(String, nullable=False, index=True)
     description = Column(String)
     metadata_ = Column('metadata', JSON, default=dict)
@@ -92,13 +105,13 @@ class Config(Base):
 
 class Memory(Base):
     __tablename__ = "memories"
-    id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    user_id = Column(UUID, ForeignKey(f"{SCHEMA_NAME}.users.id"), nullable=False, index=True)
-    app_id = Column(UUID, ForeignKey(f"{SCHEMA_NAME}.apps.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.users.id"), nullable=False, index=True)
+    app_id = Column(PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.apps.id"), nullable=False, index=True)
     content = Column(String, nullable=False)
     vector = Column(String)
     metadata_ = Column('metadata', JSON, default=dict)
-    state = Column(Enum(MemoryState), default=MemoryState.active, index=True)
+    state = Column(MemoryStateEnum, default=MemoryState.active, index=True)
     created_at = Column(DateTime, default=get_current_utc_time, index=True)
     updated_at = Column(DateTime,
                         default=get_current_utc_time,
@@ -108,7 +121,7 @@ class Memory(Base):
 
     user = relationship("User", back_populates="memories")
     app = relationship("App", back_populates="memories")
-    categories = relationship("Category", secondary=f"{SCHEMA_NAME}.memory_categories", back_populates="memories")
+    categories = relationship("Category", secondary=memory_categories, back_populates="memories")
 
     __table_args__ = (
         Index('idx_memory_user_state', 'user_id', 'state'),
@@ -128,14 +141,6 @@ class Category(Base):
                         onupdate=get_current_utc_time)
 
     memories = relationship("Memory", secondary=f"{SCHEMA_NAME}.memory_categories", back_populates="categories")
-
-
-memory_categories = Table(
-    "memory_categories", Base.metadata,
-    Column("memory_id", UUID, ForeignKey("memories.id"), primary_key=True, index=True),
-    Column("category_id", UUID, ForeignKey("categories.id"), primary_key=True, index=True),
-    Index('idx_memory_category', 'memory_id', 'category_id'),
-)
 
 
 class AccessControl(Base):

@@ -1,7 +1,6 @@
 import datetime
 from uuid import uuid4
 
-from app.config import DEFAULT_APP_ID, USER_ID
 from app.database import Base, SessionLocal, engine
 from app.mcp_server import setup_mcp_server
 from app.models import App, User
@@ -9,6 +8,12 @@ from app.routers import apps_router, config_router, memories_router, stats_route
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
+
+from openmemory.api.config.settings import get_settings
+
+settings = get_settings()
+USER_ID = settings.user_id
+DEFAULT_APP_ID = settings.app_id
 
 app = FastAPI(title="OpenMemory API")
 
@@ -22,6 +27,7 @@ app.add_middleware(
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
+
 
 # Check for USER_ID and create default user if needed
 def create_default_user():
@@ -71,6 +77,7 @@ def create_default_app():
     finally:
         db.close()
 
+
 # Create default user on startup
 create_default_user()
 create_default_app()
@@ -89,4 +96,5 @@ add_pagination(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8765, reload=True)

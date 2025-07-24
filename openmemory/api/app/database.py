@@ -1,19 +1,24 @@
-import os
-
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
-# load .env file (make sure you have DATABASE_URL set)
-load_dotenv()
+from openmemory.api.config.settings import get_settings
+from openmemory.api.app.models import Base
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+settings = get_settings()
+
+DATABASE_URL = settings.database_url
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set in environment")
 
-SCHEMA_NAME = os.environ.get('SCHEMA_NAME')
+SCHEMA_NAME = settings.schema_name
 if not SCHEMA_NAME:
     raise RuntimeError("SCHEMA_NAME is not set in environment")
+
+if not settings.user_id:
+    raise RuntimeError("USER_ID is not set in environment")
+
+if not settings.app_id:
+    raise RuntimeError("APP_ID is not set in environment")
 
 # SQLAlchemy engine & session
 engine = create_engine(
@@ -23,9 +28,6 @@ engine = create_engine(
     }
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Base class for models
-Base = declarative_base()
 
 
 # Dependency for FastAPI

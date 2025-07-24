@@ -10,12 +10,16 @@ from typing import Sequence, Union
 from alembic import op
 import os
 
+from openmemory.api.config.settings import get_settings
+
 # revision identifiers, used by Alembic.
 revision: str = 'afd00efbd06b'
 down_revision: Union[str, None] = 'add_config_table'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
-schema_name = os.environ.get('SCHEMA_NAME')
+settings = get_settings()
+schema_name = settings.schema_name
+
 
 def upgrade() -> None:
     """Upgrade schema."""

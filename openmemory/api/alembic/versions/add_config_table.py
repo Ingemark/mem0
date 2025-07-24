@@ -11,12 +11,16 @@ import sqlalchemy as sa
 from alembic import op
 import os
 
+from openmemory.api.config.settings import get_settings
+
 # revision identifiers, used by Alembic.
 revision = 'add_config_table'
 down_revision = '0b53c747049a'
 branch_labels = None
 depends_on = None
-schema_name = os.environ.get('SCHEMA_NAME')
+settings = get_settings()
+schema_name = settings.schema_name
+
 
 def upgrade():
     # Create configs table if it doesn't exist
@@ -31,7 +35,7 @@ def upgrade():
         sa.UniqueConstraint('key'),
         schema=schema_name
     )
-    
+
     # Create index for key lookups
     op.create_index('idx_configs_key', 'configs', ['key'], schema=schema_name)
 

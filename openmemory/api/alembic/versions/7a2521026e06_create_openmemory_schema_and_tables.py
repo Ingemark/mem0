@@ -5,9 +5,10 @@ Revises: afd00efbd06b
 Create Date: 2025-07-16 12:00:00.000000
 
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
+from openmemory.api.config.settings import get_settings
 
 # revision identifiers, used by Alembic.
 revision = '7a2521026e06'
@@ -15,10 +16,9 @@ down_revision = 'afd00efbd06b'
 branch_labels = None
 depends_on = None
 
+settings = get_settings()
+schema_name = settings.schema_name
 
-import os
-
-schema_name = os.environ.get('SCHEMA_NAME')
 
 def upgrade():
     op.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
