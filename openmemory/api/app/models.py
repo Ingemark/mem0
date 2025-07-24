@@ -17,16 +17,14 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
-    event, MetaData,
-)
+    event, )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Session, relationship, declarative_base
+from sqlalchemy.orm import Session, relationship
 
 from openmemory.api.config.settings import get_settings
+from openmemory.api.app.database import Base
 
 settings = get_settings()
-metadata = MetaData(schema=settings.schema_name)
-Base = declarative_base(metadata=metadata)
 SCHEMA_NAME = settings.schema_name
 
 
@@ -48,10 +46,12 @@ memory_categories = Table(
     "memory_categories",
     Base.metadata,
     Column("memory_id", PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.memories.id"), primary_key=True, index=True),
-    Column("category_id", PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.categories.id"), primary_key=True, index=True),
+    Column("category_id", PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.categories.id"), primary_key=True,
+           index=True),
     Index('idx_memory_category', 'memory_id', 'category_id'),
     schema=SCHEMA_NAME,
 )
+
 
 class User(Base):
     __tablename__ = "users"
@@ -73,7 +73,7 @@ class App(Base):
     __tablename__ = "apps"
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_id = Column(PGUUID(as_uuid=True),
-                      ForeignKey(f"{SCHEMA_NAME}.users.id"),
+                      ForeignKey(f"users.id"),
                       nullable=False, index=True)
     name = Column(String, nullable=False, index=True)
     description = Column(String)
@@ -106,8 +106,8 @@ class Config(Base):
 class Memory(Base):
     __tablename__ = "memories"
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.users.id"), nullable=False, index=True)
-    app_id = Column(PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.apps.id"), nullable=False, index=True)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey(f"users.id"), nullable=False, index=True)
+    app_id = Column(PGUUID(as_uuid=True), ForeignKey(f"apps.id"), nullable=False, index=True)
     content = Column(String, nullable=False)
     vector = Column(String)
     metadata_ = Column('metadata', JSON, default=dict)
@@ -140,7 +140,7 @@ class Category(Base):
                         default=get_current_utc_time,
                         onupdate=get_current_utc_time)
 
-    memories = relationship("Memory", secondary=f"{SCHEMA_NAME}.memory_categories", back_populates="categories")
+    memories = relationship("Memory", secondary=memory_categories, back_populates="categories")
 
 
 class AccessControl(Base):
@@ -175,8 +175,8 @@ class ArchivePolicy(Base):
 class MemoryStatusHistory(Base):
     __tablename__ = "memory_status_history"
     id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    memory_id = Column(UUID, ForeignKey(f"{SCHEMA_NAME}.memories.id"), nullable=False, index=True)
-    changed_by = Column(UUID, ForeignKey(f"{SCHEMA_NAME}.users.id"), nullable=False, index=True)
+    memory_id = Column(UUID, ForeignKey(f"memories.id"), nullable=False, index=True)
+    changed_by = Column(UUID, ForeignKey(f"users.id"), nullable=False, index=True)
     old_state = Column(Enum(MemoryState), nullable=False, index=True)
     new_state = Column(Enum(MemoryState), nullable=False, index=True)
     changed_at = Column(DateTime, default=get_current_utc_time, index=True)
@@ -190,8 +190,8 @@ class MemoryStatusHistory(Base):
 class MemoryAccessLog(Base):
     __tablename__ = "memory_access_logs"
     id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    memory_id = Column(UUID, ForeignKey(f"{SCHEMA_NAME}.memories.id"), nullable=False, index=True)
-    app_id = Column(UUID, ForeignKey(f"{SCHEMA_NAME}.apps.id"), nullable=False, index=True)
+    memory_id = Column(UUID, ForeignKey(f"memories.id"), nullable=False, index=True)
+    app_id = Column(UUID, ForeignKey(f"apps.id"), nullable=False, index=True)
     accessed_at = Column(DateTime, default=get_current_utc_time, index=True)
     access_type = Column(String, nullable=False, index=True)
     metadata_ = Column('metadata', JSON, default=dict)

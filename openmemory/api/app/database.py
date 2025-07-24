@@ -1,10 +1,12 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 from openmemory.api.config.settings import get_settings
-from openmemory.api.app.models import Base
 
 settings = get_settings()
+metadata = MetaData(schema=settings.schema_name)
+
+Base = declarative_base(metadata=metadata)
 
 DATABASE_URL = settings.database_url
 if not DATABASE_URL:
