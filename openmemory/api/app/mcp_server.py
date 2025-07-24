@@ -39,6 +39,7 @@ load_dotenv()
 # Initialize MCP
 mcp = FastMCP("mem0-mcp-server")
 
+
 # Don't initialize memory client at import time - do it lazily when needed
 def get_memory_client_safe():
     """Get memory client with error handling. Returns None if client cannot be initialized."""
@@ -47,6 +48,7 @@ def get_memory_client_safe():
     except Exception as e:
         logging.warning(f"Failed to get memory client: {e}")
         return None
+
 
 # Context variables for user_id and client_name
 user_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("user_id")
@@ -58,7 +60,9 @@ mcp_router = APIRouter(prefix="/mcp")
 # Initialize SSE transport
 sse = SseServerTransport("/mcp/messages/")
 
-@mcp.tool(description="Add a new memory. This method is called everytime the user informs anything about themselves, their preferences, or anything that has any relevant information which can be useful in the future conversation. This can also be called when the user asks you to remember something.")
+
+@mcp.tool(
+    description="Add a new memory. This method is called everytime the user informs anything about themselves, their preferences, or anything that has any relevant information which can be useful in the future conversation. This can also be called when the user asks you to remember something.")
 async def add_memories(text: str) -> str:
     uid = user_id_var.get(None)
     client_name = client_name_var.get(None)
@@ -86,9 +90,9 @@ async def add_memories(text: str) -> str:
             response = memory_client.add(text,
                                          user_id=uid,
                                          metadata={
-                                            "source_app": "openmemory",
-                                            "mcp_client": client_name,
-                                        })
+                                             "source_app": "openmemory",
+                                             "mcp_client": client_name,
+                                         })
 
             # Process the response and update database
             if isinstance(response, dict) and 'results' in response:
@@ -164,10 +168,11 @@ async def search_memory(query: str) -> str:
 
             # Get accessible memory IDs based on ACL
             user_memories = db.query(Memory).filter(Memory.user_id == user.id).all()
-            accessible_memory_ids = [memory.id for memory in user_memories if check_memory_access_permissions(db, memory, app.id)]
-            
+            accessible_memory_ids = [memory.id for memory in user_memories if
+                                     check_memory_access_permissions(db, memory, app.id)]
+
             conditions = [qdrant_models.FieldCondition(key="user_id", match=qdrant_models.MatchValue(value=uid))]
-            
+
             if accessible_memory_ids:
                 # Convert UUIDs to strings for Qdrant
                 accessible_memory_ids_str = [str(memory_id) for memory_id in accessible_memory_ids]
@@ -175,27 +180,44 @@ async def search_memory(query: str) -> str:
 
             filters = qdrant_models.Filter(must=conditions)
             embeddings = memory_client.embedding_model.embed(query, "search")
-            
-            hits = memory_client.vector_store.client.query_points(
-                collection_name=memory_client.vector_store.collection_name,
-                query=embeddings,
-                query_filter=filters,
-                limit=10,
-            )
+
+            # Perform search using the appropriate vector store
+            if hasattr(memory_client.vector_store, 'client'):  # Qdrant
+                hits = memory_client.vector_store.client.query_points(
+                    collection_name=memory_client.vector_store.collection_name,
+                    query=embeddings,
+                    query_filter=filters,
+                    limit=10,
+                )
+                memories = hits.points
+            else:  # pgvector
+                hits = memory_client.vector_store.search(
+                    query=query,
+                    vectors=embeddings,
+                    limit=10,
+                    filters={"user_id": uid}
+                )
+                memories = hits
 
             # Process search results
-            memories = hits.points
-            memories = [
-                {
+            processed_memories = []
+            for memory in memories:
+                if hasattr(memory, 'payload'):  # Qdrant
+                    payload = memory.payload
+                    score = memory.score
+                else:  # pgvector
+                    payload = memory.payload
+                    score = memory.score
+
+                processed_memories.append({
                     "id": memory.id,
-                    "memory": memory.payload["data"],
-                    "hash": memory.payload.get("hash"),
-                    "created_at": memory.payload.get("created_at"),
-                    "updated_at": memory.payload.get("updated_at"),
-                    "score": memory.score,
-                }
-                for memory in memories
-            ]
+                    "memory": payload["data"],
+                    "hash": payload.get("hash"),
+                    "created_at": payload.get("created_at"),
+                    "updated_at": payload.get("updated_at"),
+                    "score": score,
+                })
+            memories = processed_memories
 
             # Log memory access for each memory found
             if isinstance(memories, dict) and 'results' in memories:
@@ -266,7 +288,8 @@ async def list_memories() -> str:
 
             # Filter memories based on permissions
             user_memories = db.query(Memory).filter(Memory.user_id == user.id).all()
-            accessible_memory_ids = [memory.id for memory in user_memories if check_memory_access_permissions(db, memory, app.id)]
+            accessible_memory_ids = [memory.id for memory in user_memories if
+                                     check_memory_access_permissions(db, memory, app.id)]
             if isinstance(memories, dict) and 'results' in memories:
                 for memory_data in memories['results']:
                     if 'id' in memory_data:
@@ -330,12 +353,13 @@ async def delete_all_memories() -> str:
             user, app = get_user_and_app(db, user_id=uid, app_id=client_name)
 
             user_memories = db.query(Memory).filter(Memory.user_id == user.id).all()
-            accessible_memory_ids = [memory.id for memory in user_memories if check_memory_access_permissions(db, memory, app.id)]
+            accessible_memory_ids = [memory.id for memory in user_memories if
+                                     check_memory_access_permissions(db, memory, app.id)]
 
             # delete the accessible memories only
             for memory_id in accessible_memory_ids:
                 try:
-                    memory_client.delete(memory_id)
+                    memory_client.delete(str(memory_id))
                 except Exception as delete_error:
                     logging.warning(f"Failed to delete memory {memory_id} from vector store: {delete_error}")
 
@@ -386,9 +410,9 @@ async def handle_sse(request: Request):
     try:
         # Handle SSE connection
         async with sse.connect_sse(
-            request.scope,
-            request.receive,
-            request._send,
+                request.scope,
+                request.receive,
+                request._send,
         ) as (read_stream, write_stream):
             await mcp._mcp_server.run(
                 read_stream,
@@ -429,6 +453,7 @@ async def handle_post_message(request: Request):
         pass
         # Clean up context variable
         # client_name_var.reset(client_token)
+
 
 def setup_mcp_server(app: FastAPI):
     """Setup MCP server with the FastAPI application"""

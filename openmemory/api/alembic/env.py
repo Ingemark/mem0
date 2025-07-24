@@ -5,12 +5,12 @@ from logging.config import fileConfig
 from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
+import sqlalchemy as sa
+
+from openmemory.api.config.settings import get_settings
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Load environment variables
-load_dotenv()
 
 # Import your models here - moved after path setup
 from app.database import Base  # noqa: E402
@@ -33,6 +33,8 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+settings = get_settings()
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -46,7 +48,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = os.getenv("DATABASE_URL", "sqlite:///./openmemory.db")
+    url = settings.database_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -66,7 +68,7 @@ def run_migrations_online() -> None:
 
     """
     configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = os.getenv("DATABASE_URL", "sqlite:///./openmemory.db")
+    configuration["sqlalchemy.url"] = settings.database_url
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
@@ -74,8 +76,13 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        connection.execute(sa.schema.CreateSchema(settings.schema_name, if_not_exists=True))
+        connection.commit()
+
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table_schema=settings.schema_name
         )
 
         with context.begin_transaction():

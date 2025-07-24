@@ -3,8 +3,8 @@ import enum
 import uuid
 
 import sqlalchemy as sa
-from app.database import Base
 from app.utils.categorization import get_categories_for_memory
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy import (
     JSON,
     UUID,
@@ -17,9 +17,15 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
-    event,
-)
+    event, )
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session, relationship
+
+from openmemory.api.config.settings import get_settings
+from openmemory.api.app.database import Base
+
+settings = get_settings()
+SCHEMA_NAME = settings.schema_name
 
 
 def get_current_utc_time():
@@ -34,9 +40,22 @@ class MemoryState(enum.Enum):
     deleted = "deleted"
 
 
+MemoryStateEnum = SAEnum(MemoryState, name="memory_state", schema=SCHEMA_NAME)
+
+memory_categories = Table(
+    "memory_categories",
+    Base.metadata,
+    Column("memory_id", PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.memories.id"), primary_key=True, index=True),
+    Column("category_id", PGUUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.categories.id"), primary_key=True,
+           index=True),
+    Index('idx_memory_category', 'memory_id', 'category_id'),
+    schema=SCHEMA_NAME,
+)
+
+
 class User(Base):
     __tablename__ = "users"
-    id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, unique=True, index=True)
     name = Column(String, nullable=True, index=True)
     email = Column(String, unique=True, nullable=True, index=True)
@@ -52,8 +71,10 @@ class User(Base):
 
 class App(Base):
     __tablename__ = "apps"
-    id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    owner_id = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id = Column(PGUUID(as_uuid=True),
+                      ForeignKey(f"users.id"),
+                      nullable=False, index=True)
     name = Column(String, nullable=False, index=True)
     description = Column(String)
     metadata_ = Column('metadata', JSON, default=dict)
@@ -84,13 +105,13 @@ class Config(Base):
 
 class Memory(Base):
     __tablename__ = "memories"
-    id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    user_id = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
-    app_id = Column(UUID, ForeignKey("apps.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey(f"users.id"), nullable=False, index=True)
+    app_id = Column(PGUUID(as_uuid=True), ForeignKey(f"apps.id"), nullable=False, index=True)
     content = Column(String, nullable=False)
     vector = Column(String)
     metadata_ = Column('metadata', JSON, default=dict)
-    state = Column(Enum(MemoryState), default=MemoryState.active, index=True)
+    state = Column(MemoryStateEnum, default=MemoryState.active, index=True)
     created_at = Column(DateTime, default=get_current_utc_time, index=True)
     updated_at = Column(DateTime,
                         default=get_current_utc_time,
@@ -100,7 +121,7 @@ class Memory(Base):
 
     user = relationship("User", back_populates="memories")
     app = relationship("App", back_populates="memories")
-    categories = relationship("Category", secondary="memory_categories", back_populates="memories")
+    categories = relationship("Category", secondary=memory_categories, back_populates="memories")
 
     __table_args__ = (
         Index('idx_memory_user_state', 'user_id', 'state'),
@@ -119,14 +140,7 @@ class Category(Base):
                         default=get_current_utc_time,
                         onupdate=get_current_utc_time)
 
-    memories = relationship("Memory", secondary="memory_categories", back_populates="categories")
-
-memory_categories = Table(
-    "memory_categories", Base.metadata,
-    Column("memory_id", UUID, ForeignKey("memories.id"), primary_key=True, index=True),
-    Column("category_id", UUID, ForeignKey("categories.id"), primary_key=True, index=True),
-    Index('idx_memory_category', 'memory_id', 'category_id')
-)
+    memories = relationship("Memory", secondary=memory_categories, back_populates="categories")
 
 
 class AccessControl(Base):
@@ -161,8 +175,8 @@ class ArchivePolicy(Base):
 class MemoryStatusHistory(Base):
     __tablename__ = "memory_status_history"
     id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    memory_id = Column(UUID, ForeignKey("memories.id"), nullable=False, index=True)
-    changed_by = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
+    memory_id = Column(UUID, ForeignKey(f"memories.id"), nullable=False, index=True)
+    changed_by = Column(UUID, ForeignKey(f"users.id"), nullable=False, index=True)
     old_state = Column(Enum(MemoryState), nullable=False, index=True)
     new_state = Column(Enum(MemoryState), nullable=False, index=True)
     changed_at = Column(DateTime, default=get_current_utc_time, index=True)
@@ -176,8 +190,8 @@ class MemoryStatusHistory(Base):
 class MemoryAccessLog(Base):
     __tablename__ = "memory_access_logs"
     id = Column(UUID, primary_key=True, default=lambda: uuid.uuid4())
-    memory_id = Column(UUID, ForeignKey("memories.id"), nullable=False, index=True)
-    app_id = Column(UUID, ForeignKey("apps.id"), nullable=False, index=True)
+    memory_id = Column(UUID, ForeignKey(f"memories.id"), nullable=False, index=True)
+    app_id = Column(UUID, ForeignKey(f"apps.id"), nullable=False, index=True)
     accessed_at = Column(DateTime, default=get_current_utc_time, index=True)
     access_type = Column(String, nullable=False, index=True)
     metadata_ = Column('metadata', JSON, default=dict)
@@ -186,6 +200,7 @@ class MemoryAccessLog(Base):
         Index('idx_access_memory_time', 'memory_id', 'accessed_at'),
         Index('idx_access_app_time', 'app_id', 'accessed_at'),
     )
+
 
 def categorize_memory(memory: Memory, db: Session) -> None:
     """Categorize a memory using OpenAI and store the categories in the database."""
